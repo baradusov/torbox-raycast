@@ -1,45 +1,35 @@
-import { ActionPanel, Action, List, getPreferenceValues, showToast, Toast, Clipboard } from "@raycast/api";
-import { useFetch } from "@raycast/utils";
+import { ActionPanel, Action, List, getPreferenceValues, showToast, Toast, Clipboard, Color } from "@raycast/api";
+import { useCachedPromise } from "@raycast/utils";
 import { useState, useMemo } from "react";
+import { fetchDownloads, getDownloadLink, deleteDownload, DownloadType } from "./api";
 
 interface Preferences {
   apiKey: string;
 }
 
-interface TorrentFile {
+interface BaseDownload {
   id: number;
-  name: string;
-  size: number;
-  short_name: string;
-}
-
-interface Torrent {
-  id: number;
-  hash: string;
   name: string;
   size: number;
   progress: number;
   download_state: string;
-  download_speed: number;
-  upload_speed: number;
-  seeders: number;
   download_present: boolean;
   download_finished: boolean;
-  files: TorrentFile[];
   created_at: string;
   updated_at: string;
 }
 
-interface TorBoxResponse {
-  success: boolean;
-  data: Torrent[];
-  detail?: string;
+interface Torrent extends BaseDownload {
+  hash: string;
+  download_speed: number;
 }
 
-interface DownloadLinkResponse {
-  success: boolean;
-  data: string;
-  detail?: string;
+type WebDownload = BaseDownload;
+
+type UsenetDownload = BaseDownload;
+
+interface Download extends BaseDownload {
+  type: DownloadType;
 }
 
 function formatBytes(bytes: number): string {
@@ -50,46 +40,102 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-async function getDownloadLink(apiKey: string, torrentId: number, fileId?: number): Promise<string> {
-  const params = new URLSearchParams({
-    token: apiKey,
-    torrent_id: torrentId.toString(),
-  });
-
-  if (fileId !== undefined) {
-    params.append("file_id", fileId.toString());
+function getTypeLabel(type: DownloadType): string {
+  switch (type) {
+    case "torrent":
+      return "Torrent";
+    case "webdl":
+      return "Web";
+    case "usenet":
+      return "Usenet";
   }
-
-  const response = await fetch(`https://api.torbox.app/v1/api/torrents/requestdl?${params}`);
-  const json = (await response.json()) as DownloadLinkResponse;
-
-  if (!response.ok || !json.success) {
-    throw new Error(json.detail || "Failed to get download link");
-  }
-
-  return json.data;
 }
 
-function TorrentListItem({ torrent, apiKey }: { torrent: Torrent; apiKey: string }) {
+function addType<T extends BaseDownload>(downloads: T[], type: DownloadType): Download[] {
+  return downloads.map((d) => ({ ...d, type }));
+}
+
+async function fetchAllDownloads(apiKey: string): Promise<Download[]> {
+  const [torrents, webDownloads, usenetDownloads] = await Promise.all([
+    fetchDownloads<Torrent>(apiKey, "torrents"),
+    fetchDownloads<WebDownload>(apiKey, "webdl"),
+    fetchDownloads<UsenetDownload>(apiKey, "usenet"),
+  ]);
+
+  const allDownloads: Download[] = [
+    ...addType(torrents, "torrent"),
+    ...addType(webDownloads, "webdl"),
+    ...addType(usenetDownloads, "usenet"),
+  ];
+
+  allDownloads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  return allDownloads;
+}
+
+function getStatusTag(download: Download): { value: string; color: Color } {
+  if (download.download_finished || download.progress >= 1) {
+    return { value: "Ready", color: Color.Green };
+  }
+  return { value: `${Math.round(download.progress * 100)}%`, color: Color.Orange };
+}
+
+function DownloadListItem({
+  download,
+  apiKey,
+  onRefresh,
+}: {
+  download: Download;
+  apiKey: string;
+  onRefresh: () => void;
+}) {
+  const statusTag = getStatusTag(download);
+  const isReady = download.download_finished || download.progress >= 1;
+
   return (
     <List.Item
-      title={torrent.name}
-      subtitle={formatBytes(torrent.size)}
+      title={download.name}
+      subtitle={`${formatBytes(download.size)} · ${getTypeLabel(download.type)}`}
+      accessories={[{ tag: { value: statusTag.value, color: statusTag.color } }]}
       actions={
         <ActionPanel>
           <ActionPanel.Section>
+            {isReady && (
+              <Action
+                title="Copy Download Link"
+                onAction={async () => {
+                  try {
+                    await showToast({ style: Toast.Style.Animated, title: "Getting download link..." });
+                    const link = await getDownloadLink(apiKey, download.type, download.id);
+                    await Clipboard.copy(link);
+                    await showToast({ style: Toast.Style.Success, title: "Download link copied!" });
+                  } catch (error) {
+                    await showToast({
+                      style: Toast.Style.Failure,
+                      title: "Failed to get download link",
+                      message: error instanceof Error ? error.message : "Unknown error",
+                    });
+                  }
+                }}
+              />
+            )}
+          </ActionPanel.Section>
+          <ActionPanel.Section>
+            <Action title="Refresh All Downloads" shortcut={{ modifiers: ["cmd"], key: "r" }} onAction={onRefresh} />
             <Action
-              title="Copy Download Link"
+              title="Delete Download"
+              style={Action.Style.Destructive}
+              shortcut={{ modifiers: ["ctrl"], key: "x" }}
               onAction={async () => {
                 try {
-                  await showToast({ style: Toast.Style.Animated, title: "Getting download link..." });
-                  const link = await getDownloadLink(apiKey, torrent.id);
-                  await Clipboard.copy(link);
-                  await showToast({ style: Toast.Style.Success, title: "Download link copied!" });
+                  await showToast({ style: Toast.Style.Animated, title: "Deleting download..." });
+                  await deleteDownload(apiKey, download.type, download.id);
+                  await showToast({ style: Toast.Style.Success, title: "Download deleted" });
+                  onRefresh();
                 } catch (error) {
                   await showToast({
                     style: Toast.Style.Failure,
-                    title: "Failed to get download link",
+                    title: "Failed to delete download",
                     message: error instanceof Error ? error.message : "Unknown error",
                   });
                 }
@@ -106,28 +152,19 @@ export default function Command() {
   const preferences = getPreferenceValues<Preferences>();
   const [searchText, setSearchText] = useState("");
 
-  const { data, isLoading, error } = useFetch<TorBoxResponse>(
-    `https://api.torbox.app/v1/api/torrents/mylist?bypass_cache=false`,
-    {
-      headers: {
-        Authorization: `Bearer ${preferences.apiKey}`,
-      },
-      keepPreviousData: true,
-    },
-  );
+  const { data, isLoading, error, revalidate } = useCachedPromise(fetchAllDownloads, [preferences.apiKey], {
+    keepPreviousData: true,
+  });
 
-  const filteredTorrents = useMemo(() => {
-    if (!data?.data) return [];
-
-    const torrents = data.data;
+  const filteredDownloads = useMemo(() => {
+    if (!data) return [];
 
     if (searchText.length === 0) {
-      return torrents.slice(0, 10);
+      return data;
     }
 
     const searchLower = searchText.toLowerCase();
-
-    return torrents.filter((torrent) => torrent.name.toLowerCase().includes(searchLower));
+    return data.filter((download) => download.name.toLowerCase().includes(searchLower));
   }, [data, searchText]);
 
   if (error) {
@@ -145,9 +182,14 @@ export default function Command() {
       searchBarPlaceholder="Search your TorBox downloads..."
       throttle
     >
-      <List.Section title={searchText ? "Search Results" : "Recent Downloads"} subtitle={`${filteredTorrents.length}`}>
-        {filteredTorrents.map((torrent) => (
-          <TorrentListItem key={torrent.id} torrent={torrent} apiKey={preferences.apiKey} />
+      <List.Section title={searchText ? "Search Results" : "All Downloads"} subtitle={`${filteredDownloads.length}`}>
+        {filteredDownloads.map((download) => (
+          <DownloadListItem
+            key={`${download.type}-${download.id}`}
+            download={download}
+            apiKey={preferences.apiKey}
+            onRefresh={revalidate}
+          />
         ))}
       </List.Section>
     </List>
