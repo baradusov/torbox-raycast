@@ -54,7 +54,7 @@ interface Download {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+  if (!bytes || bytes === 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -76,11 +76,11 @@ function toDownload<T extends BaseDownload>(downloads: T[], type: DownloadType):
   return downloads.map((d) => ({
     id: d.id,
     name: d.name,
-    size: d.size,
+    size: d.size ?? 0,
     type,
     created_at: d.created_at,
-    progress: d.progress,
-    download_finished: d.download_finished,
+    progress: d.progress ?? 0,
+    download_finished: d.download_finished ?? false,
     isQueued: false,
   }));
 }
