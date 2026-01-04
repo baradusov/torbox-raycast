@@ -1,3 +1,3 @@
-# Torbox
+# TorBox
 
-Search downloads in your torbox
+Control your TorBox downloads from Raycast.
