@@ -10,10 +10,6 @@ import {
   DownloadType,
 } from "./api";
 
-interface Preferences {
-  apiKey: string;
-}
-
 interface BaseDownload {
   id: number;
   name: string;
@@ -55,6 +51,7 @@ interface Download {
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return "0 B";
+
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -122,9 +119,11 @@ function getStatusTag(download: Download): { value: string; color: Color } {
   if (download.isQueued) {
     return { value: "Queued", color: Color.Blue };
   }
+
   if (download.download_finished || download.progress >= 1) {
     return { value: "Ready", color: Color.Green };
   }
+
   return { value: `${Math.round(download.progress * 100)}%`, color: Color.Orange };
 }
 
@@ -157,8 +156,10 @@ function DownloadListItem({
                 onAction={async () => {
                   try {
                     await showToast({ style: Toast.Style.Animated, title: "Getting download link..." });
+
                     const link = await getDownloadLink(apiKey, download.type, download.id);
                     await Clipboard.copy(link);
+
                     await showToast({ style: Toast.Style.Success, title: "Download link copied!" });
                   } catch (error) {
                     await showToast({
@@ -180,12 +181,14 @@ function DownloadListItem({
               onAction={async () => {
                 try {
                   await showToast({ style: Toast.Style.Animated, title: "Deleting download..." });
+
                   if (download.isQueued) {
                     await deleteQueuedDownload(apiKey, download.id);
                   } else {
                     await deleteDownload(apiKey, download.type, download.id);
                   }
                   await showToast({ style: Toast.Style.Success, title: "Download deleted" });
+
                   onRefresh();
                 } catch (error) {
                   await showToast({
@@ -204,7 +207,7 @@ function DownloadListItem({
 }
 
 export default function Command() {
-  const preferences = getPreferenceValues<Preferences>();
+  const preferences = getPreferenceValues<ExtensionPreferences>();
   const [searchText, setSearchText] = useState("");
 
   const { data, isLoading, error, revalidate } = useCachedPromise(fetchAllDownloads, [preferences.apiKey], {
