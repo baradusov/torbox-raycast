@@ -42,6 +42,16 @@ export async function fetchDownloads<T>(apiKey: string, endpoint: string): Promi
   return json.data || [];
 }
 
+export async function fetchQueuedDownloads<T>(apiKey: string): Promise<T[]> {
+  const json = await request<ListResponse<T>>(`${BASE_URL}/queued/getqueued?bypass_cache=true`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  return json.data || [];
+}
+
 export async function getDownloadLink(
   apiKey: string,
   type: DownloadType,
@@ -75,6 +85,20 @@ export async function deleteDownload(apiKey: string, type: DownloadType, downloa
     },
     body: JSON.stringify({
       [idParam]: downloadId,
+      operation: "delete",
+    }),
+  });
+}
+
+export async function deleteQueuedDownload(apiKey: string, queuedId: number): Promise<void> {
+  await request<ApiResponse>(`${BASE_URL}/queued/controlqueued`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      queued_id: queuedId,
       operation: "delete",
     }),
   });

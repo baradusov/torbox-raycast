@@ -1,7 +1,14 @@
 import { ActionPanel, Action, List, getPreferenceValues, showToast, Toast, Clipboard, Color } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState, useMemo } from "react";
-import { fetchDownloads, getDownloadLink, deleteDownload, DownloadType } from "./api";
+import {
+  fetchDownloads,
+  fetchQueuedDownloads,
+  getDownloadLink,
+  deleteDownload,
+  deleteQueuedDownload,
+  DownloadType,
+} from "./api";
 
 interface Preferences {
   apiKey: string;
@@ -28,8 +35,22 @@ type WebDownload = BaseDownload;
 
 type UsenetDownload = BaseDownload;
 
-interface Download extends BaseDownload {
+interface QueuedDownload {
+  id: number;
+  name: string;
   type: DownloadType;
+  created_at: string;
+}
+
+interface Download {
+  id: number;
+  name: string;
+  size: number;
+  type: DownloadType;
+  created_at: string;
+  progress: number;
+  download_finished: boolean;
+  isQueued: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -51,21 +72,45 @@ function getTypeLabel(type: DownloadType): string {
   }
 }
 
-function addType<T extends BaseDownload>(downloads: T[], type: DownloadType): Download[] {
-  return downloads.map((d) => ({ ...d, type }));
+function toDownload<T extends BaseDownload>(downloads: T[], type: DownloadType): Download[] {
+  return downloads.map((d) => ({
+    id: d.id,
+    name: d.name,
+    size: d.size,
+    type,
+    created_at: d.created_at,
+    progress: d.progress,
+    download_finished: d.download_finished,
+    isQueued: false,
+  }));
+}
+
+function toQueuedDownload(downloads: QueuedDownload[]): Download[] {
+  return downloads.map((d) => ({
+    id: d.id,
+    name: d.name,
+    size: 0,
+    type: d.type,
+    created_at: d.created_at,
+    progress: 0,
+    download_finished: false,
+    isQueued: true,
+  }));
 }
 
 async function fetchAllDownloads(apiKey: string): Promise<Download[]> {
-  const [torrents, webDownloads, usenetDownloads] = await Promise.all([
+  const [torrents, webDownloads, usenetDownloads, queued] = await Promise.all([
     fetchDownloads<Torrent>(apiKey, "torrents"),
     fetchDownloads<WebDownload>(apiKey, "webdl"),
     fetchDownloads<UsenetDownload>(apiKey, "usenet"),
+    fetchQueuedDownloads<QueuedDownload>(apiKey),
   ]);
 
   const allDownloads: Download[] = [
-    ...addType(torrents, "torrent"),
-    ...addType(webDownloads, "webdl"),
-    ...addType(usenetDownloads, "usenet"),
+    ...toDownload(torrents, "torrent"),
+    ...toDownload(webDownloads, "webdl"),
+    ...toDownload(usenetDownloads, "usenet"),
+    ...toQueuedDownload(queued),
   ];
 
   allDownloads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -74,6 +119,9 @@ async function fetchAllDownloads(apiKey: string): Promise<Download[]> {
 }
 
 function getStatusTag(download: Download): { value: string; color: Color } {
+  if (download.isQueued) {
+    return { value: "Queued", color: Color.Blue };
+  }
   if (download.download_finished || download.progress >= 1) {
     return { value: "Ready", color: Color.Green };
   }
@@ -90,12 +138,15 @@ function DownloadListItem({
   onRefresh: () => void;
 }) {
   const statusTag = getStatusTag(download);
-  const isReady = download.download_finished || download.progress >= 1;
+  const isReady = !download.isQueued && (download.download_finished || download.progress >= 1);
+  const subtitle = download.isQueued
+    ? getTypeLabel(download.type)
+    : `${formatBytes(download.size)} · ${getTypeLabel(download.type)}`;
 
   return (
     <List.Item
       title={download.name}
-      subtitle={`${formatBytes(download.size)} · ${getTypeLabel(download.type)}`}
+      subtitle={subtitle}
       accessories={[{ tag: { value: statusTag.value, color: statusTag.color } }]}
       actions={
         <ActionPanel>
@@ -129,7 +180,11 @@ function DownloadListItem({
               onAction={async () => {
                 try {
                   await showToast({ style: Toast.Style.Animated, title: "Deleting download..." });
-                  await deleteDownload(apiKey, download.type, download.id);
+                  if (download.isQueued) {
+                    await deleteQueuedDownload(apiKey, download.id);
+                  } else {
+                    await deleteDownload(apiKey, download.type, download.id);
+                  }
                   await showToast({ style: Toast.Style.Success, title: "Download deleted" });
                   onRefresh();
                 } catch (error) {
@@ -185,7 +240,7 @@ export default function Command() {
       <List.Section title={searchText ? "Search Results" : "All Downloads"} subtitle={`${filteredDownloads.length}`}>
         {filteredDownloads.map((download) => (
           <DownloadListItem
-            key={`${download.type}-${download.id}`}
+            key={`${download.isQueued ? "queued" : download.type}-${download.id}`}
             download={download}
             apiKey={preferences.apiKey}
             onRefresh={revalidate}
