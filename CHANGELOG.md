@@ -12,5 +12,3 @@
 - Show all downloads instead of last 10
 
 ## [Initial Version] - 2026-01-27
-
-- Initial release
