@@ -11,6 +11,6 @@
 - Show file count for downloads with multiple files
 - Show all downloads instead of last 10
 
-## [Initial Version] - 2025-01-02
+## [Initial Version] - 2026-01-27
 
 - Initial release
