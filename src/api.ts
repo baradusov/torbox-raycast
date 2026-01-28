@@ -4,7 +4,7 @@ export type DownloadType = "torrent" | "webdl" | "usenet";
 
 const DOWNLOAD_TYPE_CONFIG: Record<DownloadType, { endpoint: string; idParam: string; controlEndpoint: string }> = {
   torrent: { endpoint: "torrents", idParam: "torrent_id", controlEndpoint: "controltorrent" },
-  webdl: { endpoint: "webdl", idParam: "web_id", controlEndpoint: "controlwebdownload" },
+  webdl: { endpoint: "webdl", idParam: "webdl_id", controlEndpoint: "controlwebdownload" },
   usenet: { endpoint: "usenet", idParam: "usenet_id", controlEndpoint: "controlusenetdownload" },
 };
 
