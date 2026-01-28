@@ -1,4 +1,4 @@
-import { ActionPanel, Action, List, getPreferenceValues, showToast, Toast, Clipboard, Color } from "@raycast/api";
+import { ActionPanel, Action, List, getPreferenceValues, showToast, Toast, Clipboard, Color, Icon } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState, useMemo } from "react";
 import {
@@ -10,6 +10,13 @@ import {
   DownloadType,
 } from "./api";
 
+interface DownloadFile {
+  id: number;
+  name: string;
+  size: number;
+  short_name: string;
+}
+
 interface BaseDownload {
   id: number;
   name: string;
@@ -18,6 +25,7 @@ interface BaseDownload {
   download_state: string;
   download_present: boolean;
   download_finished: boolean;
+  files?: DownloadFile[];
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +55,7 @@ interface Download {
   progress: number;
   download_finished: boolean;
   isQueued: boolean;
+  files: DownloadFile[];
 }
 
 function formatBytes(bytes: number): string {
@@ -79,6 +88,7 @@ function toDownload<T extends BaseDownload>(downloads: T[], type: DownloadType):
     progress: d.progress ?? 0,
     download_finished: d.download_finished ?? false,
     isQueued: false,
+    files: d.files ?? [],
   }));
 }
 
@@ -92,6 +102,7 @@ function toQueuedDownload(downloads: QueuedDownload[]): Download[] {
     progress: 0,
     download_finished: false,
     isQueued: true,
+    files: [],
   }));
 }
 
@@ -113,6 +124,48 @@ async function fetchAllDownloads(apiKey: string): Promise<Download[]> {
   allDownloads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return allDownloads;
+}
+
+function DownloadFiles({ download, apiKey }: { download: Download; apiKey: string }) {
+  const isReady = download.download_finished || download.progress >= 1;
+  const files = download.files ?? [];
+
+  return (
+    <List navigationTitle={download.name} searchBarPlaceholder="Search files...">
+      <List.Section title="Files" subtitle={`${files.length}`}>
+        {files.map((file) => (
+          <List.Item
+            key={file.id}
+            title={file.short_name || file.name}
+            subtitle={formatBytes(file.size)}
+            actions={
+              <ActionPanel>
+                {isReady && (
+                  <Action
+                    title="Copy Download Link"
+                    onAction={async () => {
+                      try {
+                        await showToast({ style: Toast.Style.Animated, title: "Getting download link..." });
+                        const link = await getDownloadLink(apiKey, download.type, download.id, file.id);
+                        await Clipboard.copy(link);
+                        await showToast({ style: Toast.Style.Success, title: "Download link copied!" });
+                      } catch (error) {
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: "Failed to get download link",
+                          message: error instanceof Error ? error.message : "Unknown error",
+                        });
+                      }
+                    }}
+                  />
+                )}
+              </ActionPanel>
+            }
+          />
+        ))}
+      </List.Section>
+    </List>
+  );
 }
 
 function getStatusTag(download: Download): { value: string; color: Color } {
@@ -138,9 +191,12 @@ function DownloadListItem({
 }) {
   const statusTag = getStatusTag(download);
   const isReady = !download.isQueued && (download.download_finished || download.progress >= 1);
+  const files = download.files ?? [];
+  const hasMultipleFiles = files.length > 1;
+  const fileCount = hasMultipleFiles ? ` · ${files.length} files` : "";
   const subtitle = download.isQueued
     ? getTypeLabel(download.type)
-    : `${formatBytes(download.size)} · ${getTypeLabel(download.type)}`;
+    : `${formatBytes(download.size)} · ${getTypeLabel(download.type)}${fileCount}`;
 
   return (
     <List.Item
@@ -169,6 +225,14 @@ function DownloadListItem({
                     });
                   }
                 }}
+              />
+            )}
+            {hasMultipleFiles && (
+              <Action.Push
+                title="View Files"
+                icon={Icon.List}
+                shortcut={{ modifiers: ["cmd"], key: "return" }}
+                target={<DownloadFiles download={download} apiKey={apiKey} />}
               />
             )}
           </ActionPanel.Section>
