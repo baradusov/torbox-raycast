@@ -28,26 +28,28 @@ export const DownloadFiles = ({ download, apiKey }: DownloadFilesProps) => {
               subtitle={formatBytes(file.size)}
               actions={
                 <ActionPanel>
-                  {isReady && isVideo && players.map((player) => (
-                    <Action
-                      key={player.name}
-                      title={`Open in ${player.name}`}
-                      icon={Icon.Play}
-                      onAction={() => openInPlayer(apiKey, download, player, file.id)}
-                    />
-                  ))}
+                  {isReady &&
+                    isVideo &&
+                    players.map((player) => (
+                      <Action
+                        key={player.name}
+                        title={`Open in ${player.name}`}
+                        icon={Icon.Play}
+                        onAction={() => openInPlayer(apiKey, download, player, file.id)}
+                      />
+                    ))}
                   {isReady && (
-                    <Action title="Copy Download Link" icon={Icon.Link} onAction={() => copyDownloadLink(apiKey, download, file.id)} />
+                    <Action
+                      title="Copy Download Link"
+                      icon={Icon.Link}
+                      onAction={() => copyDownloadLink(apiKey, download, file.id)}
+                    />
                   )}
                   {isVideo && players.length > 1 && (
                     <ActionPanel.Section>
                       <ActionPanel.Submenu title="Set Default Player" icon={Icon.Star}>
                         {players.map((player) => (
-                          <Action
-                            key={player.name}
-                            title={player.name}
-                            onAction={() => setDefaultPlayer(player)}
-                          />
+                          <Action key={player.name} title={player.name} onAction={() => setDefaultPlayer(player)} />
                         ))}
                       </ActionPanel.Submenu>
                     </ActionPanel.Section>

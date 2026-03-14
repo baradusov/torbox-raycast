@@ -81,15 +81,19 @@ export const DownloadListItem = ({ download, apiKey, onRefresh }: DownloadListIt
       actions={
         <ActionPanel>
           <ActionPanel.Section>
-            {isReady && isSingleVideoFile && players.map((player) => (
-              <Action
-                key={player.name}
-                title={`Open in ${player.name}`}
-                icon={Icon.Play}
-                onAction={() => openInPlayer(apiKey, download, player)}
-              />
-            ))}
-            {isReady && <Action title="Copy Download Link" icon={Icon.Link} onAction={() => copyDownloadLink(apiKey, download)} />}
+            {isReady &&
+              isSingleVideoFile &&
+              players.map((player) => (
+                <Action
+                  key={player.name}
+                  title={`Open in ${player.name}`}
+                  icon={Icon.Play}
+                  onAction={() => openInPlayer(apiKey, download, player)}
+                />
+              ))}
+            {isReady && (
+              <Action title="Copy Download Link" icon={Icon.Link} onAction={() => copyDownloadLink(apiKey, download)} />
+            )}
             {hasMultipleFiles && (
               <Action.Push
                 title="View Files"
@@ -103,11 +107,7 @@ export const DownloadListItem = ({ download, apiKey, onRefresh }: DownloadListIt
             <ActionPanel.Section>
               <ActionPanel.Submenu title="Set Default Player" icon={Icon.Star}>
                 {players.map((player) => (
-                  <Action
-                    key={player.name}
-                    title={player.name}
-                    onAction={() => setDefaultPlayer(player)}
-                  />
+                  <Action key={player.name} title={player.name} onAction={() => setDefaultPlayer(player)} />
                 ))}
               </ActionPanel.Submenu>
             </ActionPanel.Section>
